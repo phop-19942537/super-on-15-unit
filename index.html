@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Logic Master 15 UNIT - Split View</title>
+    <title>Logic Master 15 UNIT - Professional Split</title>
     <style>
         :root {
             --bg: #000; --text: #fff; --box: #111; --border: #333;
@@ -29,7 +29,6 @@
         .util-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; width: 100%; max-width: 500px; }
         .btn-sub { padding: 10px 0; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; background: var(--box); color: var(--text); }
         
-        /* ปรับ Layout เป็น 2 คอลัมน์ */
         .app-container { 
             display: grid; 
             grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); 
@@ -63,7 +62,6 @@
         .mini-btn { flex: 1; background: var(--box); border: 1px solid var(--border); color: var(--text); padding: 6px 0; border-radius: 6px; font-size: 10px; cursor: pointer; font-weight: bold; }
         .mini-btn.on { background: #00f2ff; color: #000; box-shadow: 0 0 10px rgba(0,242,255,0.5); }
         
-        /* Modals */
         .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 1000; }
         .modal-content { background: var(--box); width: 90%; max-width: 320px; border-radius: 15px; padding: 20px; border: 1px solid var(--border); text-align: center; }
         #historyOverlay { position: fixed; inset: 0; background: var(--bg); z-index: 2000; display: none; flex-direction: column; padding: 15px; }
@@ -131,7 +129,7 @@
             this.selectedWood = saved.selectedWood || 6;
             this.currentExp = saved.currentExp || 7;
             this.isSuperMode = saved.isSuperMode || false;
-            this.currentStep = 0;
+            this.currentStep = saved.currentStep || 0; // เพิ่มการบันทึกสถานะไม้ทบปัจจุบัน
             this.isFound = false;
             this.aim = "";
             this.isLoss = false;
@@ -161,12 +159,14 @@
         save() {
             localStorage.setItem('v3_data_' + this.id, JSON.stringify({
                 log: this.log, winHistory: this.winHistory, selectedLv: this.selectedLv,
-                selectedWood: this.selectedWood, currentExp: this.currentExp, isSuperMode: this.isSuperMode
+                selectedWood: this.selectedWood, currentExp: this.currentExp, 
+                isSuperMode: this.isSuperMode, currentStep: this.currentStep
             }));
         }
 
         processAdd(v) {
             if (v === 'T') { this.log.push(v); this.save(); this.render(); return; }
+            
             if (this.isFound) {
                 const hData = { dna: this.lockedDNA || this.currentExp, time: new Date().toLocaleTimeString() };
                 if (v === this.aim) {
@@ -181,16 +181,40 @@
                         this.isLoss = true; this.currentStep = 0; this.isFound = false; this.lockedDNA = null;
                     }
                 }
-            } else if (this.isLoss) { this.isLoss = false; }
+            } else if (this.isLoss) { 
+                this.isLoss = false; 
+            }
+
             this.log.push(v); this.save(); this.render();
         }
 
+        // --- แก้ไขส่วนกดย้อนกลับ (Undo) ---
         undo() {
             if (this.log.length === 0) return;
             const lastInput = this.log.pop();
-            if (lastInput !== 'T' && this.winHistory.length > 0) this.winHistory.shift(); 
+
+            // ตรวจสอบว่าตัวที่ลบไปเป็นผลลัพธ์ของไม้ทบหรือไม่
+            if (lastInput !== 'T') {
+                // ถ้าปัจจุบันไม่ใช่หน้าจอ Loss และมีการคาดการณ์ (Found) หรือกำลังทบไม้ (Step > 0)
+                if (this.currentStep > 0) {
+                    this.currentStep--; // ย้อนไม้ทบกลับมา 1 ขั้น
+                } else if (this.winHistory.length > 0) {
+                    // ถ้า Step เป็น 0 แปลว่าเพิ่งกด WIN หรือ LOSS ไป ให้ดึงประวัติคืนมา
+                    const lastResult = this.winHistory[0];
+                    // ตรวจสอบเวลาหรือเงื่อนไขว่าประวัตินี้เกิดจากการกดยูนิคตัวล่าสุดหรือไม่
+                    // (ในกรณีนี้ใช้ตรรกะว่าถ้า Undo แล้วให้ดึงสถานะก่อนหน้าประวัติล่าสุด)
+                    this.winHistory.shift(); 
+                    if (lastResult.status === 'WIN') {
+                        this.currentStep = lastResult.step - 1;
+                    } else if (lastResult.status === 'LOSS') {
+                        this.currentStep = this.selectedWood - 1;
+                    }
+                }
+            }
+
             this.isLoss = (this.winHistory.length > 0 && this.winHistory[0].status === 'LOSS');
-            this.currentStep = 0; this.isFound = false; this.lockedDNA = null;
+            this.isFound = false;
+            this.lockedDNA = null;
             this.save(); this.render();
         }
 
